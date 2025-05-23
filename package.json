@@ -1,0 +1,29 @@
+{
+  "name": "railway-pr-preview",
+  "version": "1.0.0",
+  "description": "GitHub Action for automatic Railway PR preview environments",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "ncc build src/index.js -o dist --source-map",
+    "package": "npm run build",
+    "test": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "keywords": [
+    "github-action",
+    "railway",
+    "preview",
+    "deployment",
+    "pr"
+  ],
+  "author": "Railway PR Preview Action",
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.1"
+  }
+}

@@ -1,0 +1,18 @@
+# Basic usage example
+# Place this file at .github/workflows/railway-preview.yml
+
+name: Railway PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Railway PR Preview
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_SOURCE_ENV_ID }}

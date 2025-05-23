@@ -1,0 +1,55 @@
+# Example showing URL configuration options
+# Place this file at .github/workflows/railway-preview.yml
+
+name: Railway PR Preview with URL Control
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  # Fast preview - don't wait for URLs (instant comments)
+  fast-preview:
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    steps:
+      - name: Deploy Railway PR Preview (Fast)
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_SOURCE_ENV_ID }}
+          environment_name_prefix: 'fast-'
+          wait_for_urls: 'false'  # Skip URL waiting for immediate comments
+          deploy_on_create: 'true'
+          comment_on_pr: 'true'
+
+  # Complete preview - wait for URLs (shows deployment URLs)
+  complete-preview:
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    steps:
+      - name: Deploy Railway PR Preview (Complete)
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_SOURCE_ENV_ID }}
+          environment_name_prefix: 'complete-'
+          wait_for_urls: 'true'     # Wait for URLs
+          url_wait_timeout: '180'   # Wait up to 3 minutes
+          deploy_on_create: 'true'
+          comment_on_pr: 'true'
+
+  # Cleanup both environments
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    strategy:
+      matrix:
+        prefix: ['fast-', 'complete-']
+    steps:
+      - name: Cleanup Railway Environment
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_SOURCE_ENV_ID }}
+          environment_name_prefix: ${{ matrix.prefix }}

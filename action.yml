@@ -1,0 +1,51 @@
+name: 'Railway PR Preview'
+description: 'Automatically create and manage Railway preview environments for PRs'
+author: 'Railway PR Preview Action'
+
+branding:
+  icon: 'cloud'
+  color: 'purple'
+
+inputs:
+  railway_token:
+    description: 'Railway API token (Account token recommended)'
+    required: true
+  source_environment_id:
+    description: 'Environment ID to clone from (typically production)'
+    required: true
+  github_token:
+    description: 'GitHub token for posting comments and status checks'
+    required: false
+    default: ${{ github.token }}
+  environment_name_prefix:
+    description: 'Prefix for environment names'
+    required: false
+    default: 'pr-'
+  comment_on_pr:
+    description: 'Whether to comment on the PR with environment info'
+    required: false
+    default: 'true'
+  deploy_on_create:
+    description: 'Whether to trigger deployment after creating environment'
+    required: false
+    default: 'true'
+  wait_for_urls:
+    description: 'Whether to wait for deployment URLs before updating comment'
+    required: false
+    default: 'true'
+  url_wait_timeout:
+    description: 'Max time to wait for URLs in seconds'
+    required: false
+    default: '120'
+
+outputs:
+  environment_id:
+    description: 'ID of the created/managed environment'
+  environment_name:
+    description: 'Name of the created/managed environment'
+  deployment_url:
+    description: 'URL of the deployed environment (if available)'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

@@ -1,0 +1,40 @@
+# Advanced usage example with custom configuration
+# Place this file at .github/workflows/railway-preview.yml
+
+name: Railway PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  push:
+    branches: 
+      - 'feature/**'  # Deploy on push to feature branches
+      - 'hotfix/**'   # Deploy on push to hotfix branches
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    steps:
+      - name: Deploy Railway PR Preview
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_PRODUCTION_ENV_ID }}
+          environment_name_prefix: 'preview-'
+          comment_on_pr: 'true'
+          deploy_on_create: 'true'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    steps:
+      - name: Cleanup Railway Environment
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_PRODUCTION_ENV_ID }}
+          environment_name_prefix: 'preview-'
+          comment_on_pr: 'true'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
