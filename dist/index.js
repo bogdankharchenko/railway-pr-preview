@@ -33882,8 +33882,16 @@ const RailwayClient = __nccwpck_require__(500);
 async function run() {
   try {
     // Get inputs
-    const railwayToken = core.getInput('railway_token', { required: true });
-    const sourceEnvironmentId = core.getInput('source_environment_id', { required: true });
+    const railwayToken = core.getInput('railway_token');
+    const sourceEnvironmentId = core.getInput('source_environment_id');
+    
+    // Check if required secrets are available
+    if (!railwayToken || !sourceEnvironmentId) {
+      core.warning('Railway credentials not available. Skipping preview deployment.');
+      core.warning('This is normal for forked repositories due to security restrictions.');
+      core.setOutput('skipped', 'true');
+      return;
+    }
     const githubToken = core.getInput('github_token');
     const environmentNamePrefix = core.getInput('environment_name_prefix') || 'pr-';
     const commentOnPr = core.getInput('comment_on_pr') === 'true';
