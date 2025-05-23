@@ -88,6 +88,7 @@ jobs:
 | `environment_id` | ID of the created/managed environment |
 | `environment_name` | Name of the created/managed environment |
 | `deployment_url` | URL of the deployed environment (if available) |
+| `skipped` | Set to 'true' if preview was skipped due to missing credentials |
 
 ## Setup Instructions
 

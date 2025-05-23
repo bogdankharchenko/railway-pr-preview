@@ -9,10 +9,10 @@ branding:
 inputs:
   railway_token:
     description: 'Railway API token (Account token recommended)'
-    required: true
+    required: false  # Made optional for fork-friendly behavior
   source_environment_id:
     description: 'Environment ID to clone from (typically production)'
-    required: true
+    required: false  # Made optional for fork-friendly behavior
   github_token:
     description: 'GitHub token for posting comments and status checks'
     required: false

@@ -1,0 +1,64 @@
+# Fork-friendly workflow that works for both main repo and forks
+name: Railway PR Preview (Fork-Friendly)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  # Always run tests for everyone (main repo and forks)
+  tests:
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run tests
+        run: npm test
+
+  # Only run Railway preview for the main repository (not forks)
+  railway-preview:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.action != 'closed' && 
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Deploy Railway PR Preview
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_SOURCE_ENV_ID }}
+
+  # Cleanup Railway environment (main repo only)
+  railway-cleanup:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.action == 'closed' && 
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Cleanup Railway Environment
+        uses: bogdankharchenko/railway-pr-preview@v1
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          source_environment_id: ${{ secrets.RAILWAY_SOURCE_ENV_ID }}
+
+  # Informational job for forks
+  fork-info:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - name: Fork Information
+        run: |
+          echo "👋 Thanks for contributing!"
+          echo "🔒 Railway preview deployments are only available for the main repository due to security restrictions."
+          echo "✅ Your code changes will still be tested automatically."
+          echo "🚀 Once merged, your changes will be deployed to the main environment."
