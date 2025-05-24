@@ -105,7 +105,7 @@ class RailwayClient {
       },
     };
 
-    console.log('Creating environment with variables:', JSON.stringify(variables, null, 2));
+
 
     const result = await this.graphql(query, variables);
     return result.environmentCreate;

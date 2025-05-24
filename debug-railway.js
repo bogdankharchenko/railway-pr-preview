@@ -21,16 +21,13 @@ async function debugRailway() {
     console.log('\n1. Getting source environment...');
     const sourceEnv = await client.getEnvironment(sourceEnvId);
     console.log('✅ Source environment:', {
-      id: sourceEnv.id,
-      name: sourceEnv.name,
-      projectId: sourceEnv.projectId
+      name: sourceEnv.name
     });
 
     // Test 2: List environments in project
     console.log('\n2. Listing project environments...');
     const environments = await client.getEnvironmentsByProject(sourceEnv.projectId);
     console.log('✅ Found environments:', environments.map(env => ({
-      id: env.id,
       name: env.name,
       isEphemeral: env.isEphemeral
     })));
@@ -41,7 +38,7 @@ async function debugRailway() {
     const existingEnv = await client.findEnvironmentByName(sourceEnv.projectId, testEnvName);
     
     if (existingEnv) {
-      console.log('⚠️  Test environment already exists:', existingEnv.id);
+      console.log('⚠️  Test environment already exists:', existingEnv.name);
       console.log('Deleting it first...');
       await client.deleteEnvironment(existingEnv.id);
       console.log('✅ Deleted existing test environment');
@@ -56,9 +53,7 @@ async function debugRailway() {
         testEnvName
       );
       console.log('✅ Environment created successfully:', {
-        id: newEnv.id,
-        name: newEnv.name,
-        projectId: newEnv.projectId
+        name: newEnv.name
       });
 
       // Clean up

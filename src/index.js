@@ -33,16 +33,14 @@ async function run() {
       sourceEnv = await railway.getEnvironment(sourceEnvironmentId);
     } catch (sourceError) {
       core.error(`Failed to get source environment: ${sourceError.message}`);
-      core.error(`Source environment ID: ${sourceEnvironmentId}`);
-      core.error(`Error details: ${JSON.stringify(sourceError)}`);
-      throw new Error(`Source environment not found or inaccessible: ${sourceEnvironmentId}. Please verify the environment ID and token permissions.`);
+      throw new Error(`Source environment not found or inaccessible. Please verify the environment ID and token permissions.`);
     }
     
     if (!sourceEnv) {
-      throw new Error(`Source environment not found: ${sourceEnvironmentId}`);
+      throw new Error(`Source environment not found. Please verify the environment configuration.`);
     }
     const projectId = sourceEnv.projectId;
-    core.info(`Project ID: ${projectId}`);
+    core.info(`Project: ${sourceEnv.name} environment`);
 
     const { context } = github;
     const { eventName, payload } = context;
@@ -97,6 +95,7 @@ async function run() {
         await handlePROpenedOrUpdated(railway, octokit, {
           projectId,
           sourceEnvironmentId,
+          sourceEnv,
           environmentName,
           prNumber,
           branchName,
@@ -120,6 +119,7 @@ async function run() {
       await handlePROpenedOrUpdated(railway, octokit, {
         projectId,
         sourceEnvironmentId,
+        sourceEnv,
         environmentName,
         prNumber,
         branchName,
@@ -142,6 +142,7 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
   const {
     projectId,
     sourceEnvironmentId,
+    sourceEnv,
     environmentName,
     prNumber,
     branchName,
@@ -155,8 +156,8 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
 
   core.info(`Handling PR opened/updated for PR #${prNumber}`);
   core.info(`Environment name: ${environmentName}`);
-  core.info(`Project ID: ${projectId}`);
-  core.info(`Source Environment ID: ${sourceEnvironmentId}`);
+  core.info(`Project: ${sourceEnv.name} environment`);
+  core.info(`Source Environment: ${sourceEnv.name}`);
 
   try {
     // Check if environment already exists
@@ -164,21 +165,30 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
     let environment = await railway.findEnvironmentByName(projectId, environmentName);
     let isNewEnvironment = false;
 
-    if (!environment) {
-      core.info(`Creating new environment: ${environmentName}`);
-      core.info(`Using project ID: ${projectId}, source env: ${sourceEnvironmentId}`);
+    if (environment) {
+      core.info(`Environment already exists: ${environment.name}`);
+      core.info('Deleting existing environment to create fresh one...');
       
       try {
-        environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
-        core.info(`Environment created successfully: ${environment.id}`);
-        isNewEnvironment = true;
-      } catch (createError) {
-        core.error(`Failed to create environment: ${createError.message}`);
-        core.error(`Create error details: ${JSON.stringify(createError)}`);
-        throw createError;
+        await railway.deleteEnvironment(environment.id);
+        core.info('Existing environment deleted successfully');
+      } catch (deleteError) {
+        core.error(`Failed to delete existing environment: ${deleteError.message}`);
+        throw deleteError;
       }
-    } else {
-      core.info(`Environment already exists: ${environment.id}`);
+    }
+
+    // Create new environment (either first time or after deletion)
+    core.info(`Creating new environment: ${environmentName}`);
+    core.info(`Using source environment: ${sourceEnv.name}`);
+    
+    try {
+      environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
+      core.info(`Environment created successfully: ${environment.name}`);
+      isNewEnvironment = true;
+    } catch (createError) {
+      core.error(`Failed to create environment: ${createError.message}`);
+      throw createError;
     }
 
     // Post initial comment if it's a new environment
@@ -219,7 +229,7 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
         });
       }
 
-      core.info(`Environment ready: ${updatedEnv.id}`);
+      core.info(`Environment ready: ${updatedEnv.name}`);
       if (urls.length > 0) {
         core.info(`Deployment URLs: ${urls.map(u => u.url).join(', ')}`);
       } else {
@@ -255,7 +265,7 @@ async function handlePRClosed(railway, octokit, options) {
     const environment = await railway.findEnvironmentByName(projectId, environmentName);
     
     if (environment) {
-      core.info(`Deleting environment: ${environment.id}`);
+      core.info(`Deleting environment: ${environment.name}`);
       await railway.deleteEnvironment(environment.id);
       core.info('Environment deleted successfully');
 
@@ -289,7 +299,6 @@ The preview environment **${environment.name}** has been deleted as the PR was c
     commentBody = `## 🚀 Railway Preview Environment Creating
 
 **Environment:** ${environment.name}
-**Environment ID:** \`${environment.id}\`
 **Status:** 🔄 Creating and deploying...
 
 *Deployment URLs will appear here once the build completes (usually takes 1-2 minutes).*
@@ -304,7 +313,6 @@ The preview environment **${environment.name}** has been deleted as the PR was c
     commentBody = `## 🚀 Railway Preview Environment ${action === 'created' ? 'Ready' : 'Updated'}
 
 **Environment:** ${environment.name}
-**Environment ID:** \`${environment.id}\`
 **Status:** ${statusEmoji} ${statusText}${urlsSection}
 
 ---
