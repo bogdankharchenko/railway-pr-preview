@@ -204,8 +204,17 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
     // Deploy if requested
     if (deployOnCreate) {
       core.info('Triggering deployment...');
-      await railway.deployEnvironment(environment.id);
-      core.info('Deployment triggered');
+      try {
+        const deploySuccess = await railway.deployEnvironment(environment.id);
+        if (deploySuccess) {
+          core.info('Deployment triggered successfully');
+        } else {
+          core.warning('Deployment could not be triggered automatically - may need manual trigger');
+        }
+      } catch (deployError) {
+        core.warning(`Deployment trigger failed: ${deployError.message}`);
+        core.warning('Environment created successfully but deployment must be triggered manually');
+      }
     }
 
     // Wait for URLs to become available and update comment

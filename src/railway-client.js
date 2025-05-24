@@ -254,20 +254,92 @@ class RailwayClient {
   }
 
   async deployEnvironment(environmentId) {
-    const query = `
-      mutation environmentTriggersDeploy($input: EnvironmentTriggersDeployInput!) {
-        environmentTriggersDeploy(input: $input)
-      }
-    `;
-
-    const variables = {
-      input: {
-        environmentId,
+    // Try different deployment mutation patterns
+    const deploymentMutations = [
+      // Try deployment redeploy
+      {
+        name: "Deployment redeploy mutation",
+        query: `
+          mutation deploymentRedeploy($input: DeploymentRedeployInput!) {
+            deploymentRedeploy(input: $input) {
+              id
+              status
+            }
+          }
+        `,
+        variables: { input: { environmentId } }
       },
-    };
+      // Try environment deploy
+      {
+        name: "Environment deploy mutation", 
+        query: `
+          mutation environmentDeploy($environmentId: String!) {
+            environmentDeploy(environmentId: $environmentId)
+          }
+        `,
+        variables: { environmentId }
+      },
+      // Original triggers deploy
+      {
+        name: "Environment triggers deploy mutation",
+        query: `
+          mutation environmentTriggersDeploy($input: EnvironmentTriggersDeployInput!) {
+            environmentTriggersDeploy(input: $input)
+          }
+        `,
+        variables: { input: { environmentId } }
+      },
+      // Try service deploy for all services in environment
+      {
+        name: "Service deploy mutation",
+        query: `
+          mutation serviceDeploy($serviceId: String!) {
+            serviceDeploy(serviceId: $serviceId) {
+              id
+              status
+            }
+          }
+        `,
+        // This will need special handling since we need to get services first
+        requiresServices: true
+      }
+    ];
 
-    await this.graphql(query, variables);
-    return true;
+    let lastError;
+    for (const deployConfig of deploymentMutations) {
+      try {
+        console.log(`Trying deployment: ${deployConfig.name}`);
+        
+        if (deployConfig.requiresServices) {
+          // Get environment to find services, then deploy each
+          const env = await this.getEnvironment(environmentId);
+          if (env?.serviceInstances?.edges?.length > 0) {
+            for (const serviceEdge of env.serviceInstances.edges) {
+              const serviceId = serviceEdge.node.serviceId;
+              await this.graphql(deployConfig.query, { serviceId });
+            }
+            console.log(`✅ Success with: ${deployConfig.name}`);
+            return true;
+          } else {
+            console.log(`❌ No services found for: ${deployConfig.name}`);
+            continue;
+          }
+        } else {
+          await this.graphql(deployConfig.query, deployConfig.variables);
+          console.log(`✅ Success with: ${deployConfig.name}`);
+          return true;
+        }
+      } catch (error) {
+        console.log(`❌ Failed with: ${deployConfig.name} - ${error.message}`);
+        lastError = error;
+        continue;
+      }
+    }
+    
+    // If all deployment methods fail, log warning but don't throw error
+    console.warn(`All deployment methods failed for environment ${environmentId}. The environment was created but deployment must be triggered manually.`);
+    console.warn(`Last error: ${lastError?.message}`);
+    return false;
   }
 
   async getEnvironmentsByProject(projectId) {
