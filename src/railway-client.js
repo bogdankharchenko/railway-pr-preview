@@ -19,13 +19,28 @@ class RailwayClient {
       }),
     });
 
+    const responseText = await response.text();
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      console.error('Railway API Error Details:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseText
+      });
+      throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
     }
 
-    const result = await response.json();
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Railway API response:', responseText);
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
     
     if (result.errors) {
+      console.error('GraphQL errors:', result.errors);
       throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
     }
 
@@ -33,6 +48,20 @@ class RailwayClient {
   }
 
   async createEnvironment(projectId, sourceEnvironmentId, name) {
+    // Validate inputs
+    if (!projectId || !sourceEnvironmentId || !name) {
+      throw new Error(`Missing required parameters: projectId=${projectId}, sourceEnvironmentId=${sourceEnvironmentId}, name=${name}`);
+    }
+
+    // Validate environment name (Railway has specific naming requirements)
+    if (name.length > 50) {
+      throw new Error(`Environment name too long (${name.length} chars). Must be 50 characters or less: ${name}`);
+    }
+
+    if (!/^[a-zA-Z0-9-_]+$/.test(name)) {
+      throw new Error(`Invalid environment name format: ${name}. Only alphanumeric characters, hyphens, and underscores are allowed.`);
+    }
+
     const query = `
       mutation environmentCreate($input: EnvironmentCreateInput!) {
         environmentCreate(input: $input) {
@@ -75,6 +104,8 @@ class RailwayClient {
         sourceEnvironmentId,
       },
     };
+
+    console.log('Creating environment with variables:', JSON.stringify(variables, null, 2));
 
     const result = await this.graphql(query, variables);
     return result.environmentCreate;
@@ -240,27 +271,84 @@ class RailwayClient {
   }
 
   async getEnvironmentsByProject(projectId) {
-    const query = `
-      query environments($projectId: String!) {
-        environments(projectId: $projectId) {
-          edges {
-            node {
+    // Try different query structures to find what works
+    const queries = [
+      // Try project-based query first (more common pattern)
+      {
+        name: "Project-based environments query",
+        query: `
+          query project($id: String!) {
+            project(id: $id) {
+              id
+              name
+              environments {
+                edges {
+                  node {
+                    id
+                    name
+                    isEphemeral
+                  }
+                }
+              }
+            }
+          }
+        `,
+        variables: { id: projectId },
+        transform: (data) => data.project.environments.edges.map(edge => edge.node)
+      },
+      // Original environments query
+      {
+        name: "Original environments query",
+        query: `
+          query environments($projectId: String!) {
+            environments(projectId: $projectId) {
+              edges {
+                node {
+                  id
+                  name
+                  isEphemeral
+                  meta
+                }
+              }
+            }
+          }
+        `,
+        variables: { projectId },
+        transform: (data) => data.environments.edges.map(edge => edge.node)
+      },
+      // Try simplified environments query
+      {
+        name: "Simplified environments query",
+        query: `
+          query environments($projectId: String!) {
+            environments(projectId: $projectId) {
               id
               name
               isEphemeral
-              meta
             }
           }
-        }
+        `,
+        variables: { projectId },
+        transform: (data) => Array.isArray(data.environments) ? data.environments : [data.environments]
       }
-    `;
+    ];
 
-    const variables = {
-      projectId,
-    };
-
-    const result = await this.graphql(query, variables);
-    return result.environments.edges.map(edge => edge.node);
+    let lastError;
+    for (const queryConfig of queries) {
+      try {
+        console.log(`Trying: ${queryConfig.name}`);
+        const result = await this.graphql(queryConfig.query, queryConfig.variables);
+        const environments = queryConfig.transform(result);
+        console.log(`✅ Success with: ${queryConfig.name}`);
+        return environments;
+      } catch (error) {
+        console.log(`❌ Failed with: ${queryConfig.name} - ${error.message}`);
+        lastError = error;
+        continue;
+      }
+    }
+    
+    throw lastError;
   }
 
   async findEnvironmentByName(projectId, name) {

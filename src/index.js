@@ -28,7 +28,16 @@ async function run() {
 
     // Get project ID from source environment
     core.info('Getting project information from source environment...');
-    const sourceEnv = await railway.getEnvironment(sourceEnvironmentId);
+    let sourceEnv;
+    try {
+      sourceEnv = await railway.getEnvironment(sourceEnvironmentId);
+    } catch (sourceError) {
+      core.error(`Failed to get source environment: ${sourceError.message}`);
+      core.error(`Source environment ID: ${sourceEnvironmentId}`);
+      core.error(`Error details: ${JSON.stringify(sourceError)}`);
+      throw new Error(`Source environment not found or inaccessible: ${sourceEnvironmentId}. Please verify the environment ID and token permissions.`);
+    }
+    
     if (!sourceEnv) {
       throw new Error(`Source environment not found: ${sourceEnvironmentId}`);
     }
@@ -145,17 +154,29 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
   } = options;
 
   core.info(`Handling PR opened/updated for PR #${prNumber}`);
+  core.info(`Environment name: ${environmentName}`);
+  core.info(`Project ID: ${projectId}`);
+  core.info(`Source Environment ID: ${sourceEnvironmentId}`);
 
   try {
     // Check if environment already exists
+    core.info('Checking for existing environment...');
     let environment = await railway.findEnvironmentByName(projectId, environmentName);
     let isNewEnvironment = false;
 
     if (!environment) {
       core.info(`Creating new environment: ${environmentName}`);
-      environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
-      core.info(`Environment created: ${environment.id}`);
-      isNewEnvironment = true;
+      core.info(`Using project ID: ${projectId}, source env: ${sourceEnvironmentId}`);
+      
+      try {
+        environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
+        core.info(`Environment created successfully: ${environment.id}`);
+        isNewEnvironment = true;
+      } catch (createError) {
+        core.error(`Failed to create environment: ${createError.message}`);
+        core.error(`Create error details: ${JSON.stringify(createError)}`);
+        throw createError;
+      }
     } else {
       core.info(`Environment already exists: ${environment.id}`);
     }
