@@ -167,28 +167,20 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
 
     if (environment) {
       core.info(`Environment already exists: ${environment.name}`);
-      core.info('Deleting existing environment to create fresh one...');
+      core.info('Using existing environment - will redeploy to get latest changes');
+    } else {
+      // Create new environment only if it doesn't exist
+      core.info(`Creating new environment: ${environmentName}`);
+      core.info(`Using source environment: ${sourceEnv.name}`);
       
       try {
-        await railway.deleteEnvironment(environment.id);
-        core.info('Existing environment deleted successfully');
-      } catch (deleteError) {
-        core.error(`Failed to delete existing environment: ${deleteError.message}`);
-        throw deleteError;
+        environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
+        core.info(`Environment created successfully: ${environment.name}`);
+        isNewEnvironment = true;
+      } catch (createError) {
+        core.error(`Failed to create environment: ${createError.message}`);
+        throw createError;
       }
-    }
-
-    // Create new environment (either first time or after deletion)
-    core.info(`Creating new environment: ${environmentName}`);
-    core.info(`Using source environment: ${sourceEnv.name}`);
-    
-    try {
-      environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
-      core.info(`Environment created successfully: ${environment.name}`);
-      isNewEnvironment = true;
-    } catch (createError) {
-      core.error(`Failed to create environment: ${createError.message}`);
-      throw createError;
     }
 
     // Post initial comment if it's a new environment
@@ -201,9 +193,10 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
       });
     }
 
-    // Deploy if requested
+    // Deploy the environment (either newly created or existing)
     if (deployOnCreate) {
-      core.info('Triggering deployment...');
+      const deployAction = isNewEnvironment ? 'Triggering initial deployment' : 'Redeploying with latest changes';
+      core.info(`${deployAction}...`);
       try {
         const deploySuccess = await railway.deployEnvironment(environment.id);
         if (deploySuccess) {
@@ -213,7 +206,7 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
         }
       } catch (deployError) {
         core.warning(`Deployment trigger failed: ${deployError.message}`);
-        core.warning('Environment created successfully but deployment must be triggered manually');
+        core.warning('Environment ready but deployment must be triggered manually');
       }
     }
 
