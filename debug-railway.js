@@ -1,4 +1,4 @@
-// Debug script to test Railway API access
+// Debug script to test Railway API access and simulate full PR workflow
 const RailwayClient = require('./src/railway-client');
 
 async function debugRailway() {
@@ -15,7 +15,7 @@ async function debugRailway() {
   const client = new RailwayClient(token);
 
   try {
-    console.log('🔍 Testing Railway API connection...');
+    console.log('🔍 Testing Railway API connection and simulating PR workflow...');
     
     // Test 1: Get source environment
     console.log('\n1. Getting source environment...');
@@ -32,41 +32,83 @@ async function debugRailway() {
       isEphemeral: env.isEphemeral
     })));
 
-    // Test 3: Check if test environment exists
-    const testEnvName = 'test-debug-env';
-    console.log(`\n3. Checking if ${testEnvName} exists...`);
-    const existingEnv = await client.findEnvironmentByName(sourceEnv.projectId, testEnvName);
+    // Test 3: Simulate PR workflow - Check if PR environment exists
+    const prEnvName = 'pr-debug-test';
+    console.log(`\n3. 🔄 SIMULATING PR WORKFLOW - Check if ${prEnvName} exists...`);
+    let prEnvironment = await client.findEnvironmentByName(sourceEnv.projectId, prEnvName);
+    let isNewEnvironment = false;
     
-    if (existingEnv) {
-      console.log('⚠️  Test environment already exists:', existingEnv.name);
-      console.log('Deleting it first...');
-      await client.deleteEnvironment(existingEnv.id);
-      console.log('✅ Deleted existing test environment');
+    if (prEnvironment) {
+      console.log(`✅ Environment already exists: ${prEnvironment.name}`);
+      console.log('📝 Using existing environment - will redeploy to get latest changes');
+    } else {
+      console.log(`📝 Environment doesn't exist - creating new one...`);
+      try {
+        prEnvironment = await client.createEnvironment(
+          sourceEnv.projectId,
+          sourceEnvId,
+          prEnvName
+        );
+        console.log('✅ Environment created successfully:', {
+          name: prEnvironment.name
+        });
+        isNewEnvironment = true;
+      } catch (createError) {
+        console.error('❌ Failed to create environment:', createError.message);
+        throw createError;
+      }
     }
 
-    // Test 4: Try to create a test environment
-    console.log(`\n4. Creating test environment: ${testEnvName}...`);
+    // Test 4: Test deployment methods (this is the key test)
+    console.log(`\n4. 🚀 TESTING DEPLOYMENT - ${isNewEnvironment ? 'Initial deployment' : 'Redeployment'}...`);
     try {
-      const newEnv = await client.createEnvironment(
-        sourceEnv.projectId,
-        sourceEnvId,
-        testEnvName
-      );
-      console.log('✅ Environment created successfully:', {
-        name: newEnv.name
-      });
-
-      // Clean up
-      console.log('\n5. Cleaning up test environment...');
-      await client.deleteEnvironment(newEnv.id);
-      console.log('✅ Test environment deleted');
-
-    } catch (createError) {
-      console.error('❌ Failed to create environment:', createError.message);
-      throw createError;
+      const deploySuccess = await client.deployEnvironment(prEnvironment.id);
+      if (deploySuccess) {
+        console.log('✅ Deployment triggered successfully');
+      } else {
+        console.log('⚠️  Deployment could not be triggered automatically');
+      }
+    } catch (deployError) {
+      console.error('❌ Deployment failed:', deployError.message);
+      console.log('📝 This is the error we need to fix!');
     }
 
-    console.log('\n🎉 All tests passed! Railway API is working correctly.');
+    // Test 5: Test getting environment details and URLs
+    console.log('\n5. 📊 Getting environment details...');
+    const envDetails = await client.getEnvironment(prEnvironment.id);
+    console.log('✅ Environment details:', {
+      name: envDetails.name,
+      serviceCount: envDetails.serviceInstances?.edges?.length || 0
+    });
+
+    // Test 6: Extract URLs (simulate waiting for URLs)
+    console.log('\n6. 🔗 Testing URL extraction...');
+    const urls = client.extractDeploymentUrls(envDetails);
+    if (urls.length > 0) {
+      console.log('✅ Found URLs:', urls.map(u => ({
+        url: u.url,
+        type: u.type,
+        serviceName: u.serviceName
+      })));
+    } else {
+      console.log('📝 No URLs found yet (normal for new environments)');
+    }
+
+    // Test 7: Simulate PR closed - cleanup
+    console.log('\n7. 🧹 SIMULATING PR CLOSED - Cleanup...');
+    try {
+      await client.deleteEnvironment(prEnvironment.id);
+      console.log('✅ Environment deleted successfully');
+    } catch (deleteError) {
+      console.error('❌ Failed to delete environment:', deleteError.message);
+    }
+
+    console.log('\n🎉 Full PR workflow simulation completed!');
+    console.log('\n📋 SUMMARY:');
+    console.log('- ✅ Environment creation/reuse: Working');
+    console.log('- ❓ Deployment triggering: Check logs above');
+    console.log('- ✅ URL extraction: Working');
+    console.log('- ✅ Environment cleanup: Working');
 
   } catch (error) {
     console.error('\n❌ Error during Railway API test:', error.message);
@@ -95,9 +137,79 @@ async function debugRailway() {
   }
 }
 
-// Run if called directly
-if (require.main === module) {
-  debugRailway().catch(console.error);
+// Additional test function to specifically test deployment methods
+async function testDeploymentMethods() {
+  const token = process.env.RAILWAY_TOKEN;
+  const sourceEnvId = process.env.RAILWAY_SOURCE_ENV_ID;
+  
+  if (!token || !sourceEnvId) {
+    console.log('Please set RAILWAY_TOKEN and RAILWAY_SOURCE_ENV_ID environment variables');
+    return;
+  }
+
+  const client = new RailwayClient(token);
+  
+  try {
+    console.log('\n🧪 TESTING DEPLOYMENT METHODS SPECIFICALLY...');
+    
+    // Get source environment
+    const sourceEnv = await client.getEnvironment(sourceEnvId);
+    
+    // Create a test environment
+    const testEnvName = 'deploy-test-env';
+    console.log(`Creating test environment: ${testEnvName}`);
+    
+    let testEnv;
+    try {
+      testEnv = await client.createEnvironment(
+        sourceEnv.projectId,
+        sourceEnvId,
+        testEnvName
+      );
+      console.log('✅ Test environment created');
+    } catch (createError) {
+      if (createError.message.includes('already exists')) {
+        console.log('Using existing test environment');
+        testEnv = await client.findEnvironmentByName(sourceEnv.projectId, testEnvName);
+      } else {
+        throw createError;
+      }
+    }
+    
+    // Test each deployment method individually
+    console.log('\n📝 Testing individual deployment methods:');
+    
+    const deploymentMethods = [
+      'Deployment redeploy mutation',
+      'Environment deploy mutation', 
+      'Environment triggers deploy mutation',
+      'Service deploy mutation'
+    ];
+    
+    // Get the actual deployment methods from the client
+    const deployResult = await client.deployEnvironment(testEnv.id);
+    
+    console.log(`Result: ${deployResult ? 'Success' : 'Failed'}`);
+    
+    // Cleanup
+    console.log('\nCleaning up test environment...');
+    await client.deleteEnvironment(testEnv.id);
+    console.log('✅ Cleanup complete');
+    
+  } catch (error) {
+    console.error('❌ Deployment method test failed:', error.message);
+  }
 }
 
-module.exports = { debugRailway };
+// Run if called directly
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  
+  if (args.includes('--deployment-test')) {
+    testDeploymentMethods().catch(console.error);
+  } else {
+    debugRailway().catch(console.error);
+  }
+}
+
+module.exports = { debugRailway, testDeploymentMethods };

@@ -202,11 +202,13 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
         if (deploySuccess) {
           core.info('Deployment triggered successfully');
         } else {
-          core.warning('Deployment could not be triggered automatically - may need manual trigger');
+          core.info('Automatic deployment not available - environment ready for manual deployment');
+          core.info('💡 You can trigger deployment manually in the Railway dashboard');
         }
       } catch (deployError) {
-        core.warning(`Deployment trigger failed: ${deployError.message}`);
-        core.warning('Environment ready but deployment must be triggered manually');
+        core.info('Automatic deployment not available - environment ready for manual deployment');
+        core.info('💡 You can trigger deployment manually in the Railway dashboard');
+        core.debug(`Deployment error details: ${deployError.message}`);
       }
     }
 

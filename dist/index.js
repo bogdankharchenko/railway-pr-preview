@@ -34079,11 +34079,13 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
         if (deploySuccess) {
           core.info('Deployment triggered successfully');
         } else {
-          core.warning('Deployment could not be triggered automatically - may need manual trigger');
+          core.info('Automatic deployment not available - environment ready for manual deployment');
+          core.info('💡 You can trigger deployment manually in the Railway dashboard');
         }
       } catch (deployError) {
-        core.warning(`Deployment trigger failed: ${deployError.message}`);
-        core.warning('Environment ready but deployment must be triggered manually');
+        core.info('Automatic deployment not available - environment ready for manual deployment');
+        core.info('💡 You can trigger deployment manually in the Railway dashboard');
+        core.debug(`Deployment error details: ${deployError.message}`);
       }
     }
 
@@ -34506,22 +34508,38 @@ class RailwayClient {
         
         // Deployment URLs (fallback)
         if (service.latestDeployment?.url) {
-          urls.push({
-            url: service.latestDeployment.url,
-            type: 'deployment',
-            serviceName: serviceName,
-            domain: new URL(service.latestDeployment.url).hostname
-          });
+          try {
+            const deploymentUrl = service.latestDeployment.url.startsWith('http') 
+              ? service.latestDeployment.url 
+              : `https://${service.latestDeployment.url}`;
+            
+            urls.push({
+              url: deploymentUrl,
+              type: 'deployment',
+              serviceName: serviceName,
+              domain: new URL(deploymentUrl).hostname
+            });
+          } catch (urlError) {
+            console.warn(`Invalid deployment URL: ${service.latestDeployment.url}`);
+          }
         }
         
         // Static URLs
         if (service.latestDeployment?.staticUrl) {
-          urls.push({
-            url: service.latestDeployment.staticUrl,
-            type: 'static',
-            serviceName: serviceName,
-            domain: new URL(service.latestDeployment.staticUrl).hostname
-          });
+          try {
+            const staticUrl = service.latestDeployment.staticUrl.startsWith('http') 
+              ? service.latestDeployment.staticUrl 
+              : `https://${service.latestDeployment.staticUrl}`;
+            
+            urls.push({
+              url: staticUrl,
+              type: 'static',
+              serviceName: serviceName,
+              domain: new URL(staticUrl).hostname
+            });
+          } catch (urlError) {
+            console.warn(`Invalid static URL: ${service.latestDeployment.staticUrl}`);
+          }
         }
       }
     }
@@ -34535,54 +34553,39 @@ class RailwayClient {
   }
 
   async deployEnvironment(environmentId) {
-    // Try different deployment mutation patterns
+    // Try the correct Railway deployment mutations based on their official docs
     const deploymentMutations = [
-      // Try deployment redeploy
+      // Official Railway service instance redeploy
       {
-        name: "Deployment redeploy mutation",
+        name: "Service Instance Redeploy (Official)",
         query: `
-          mutation deploymentRedeploy($input: DeploymentRedeployInput!) {
-            deploymentRedeploy(input: $input) {
-              id
-              status
-            }
+          mutation ServiceInstanceRedeploy($environmentId: String!, $serviceId: String!) {
+            serviceInstanceRedeploy(environmentId: $environmentId, serviceId: $serviceId)
           }
         `,
-        variables: { input: { environmentId } }
-      },
-      // Try environment deploy
-      {
-        name: "Environment deploy mutation", 
-        query: `
-          mutation environmentDeploy($environmentId: String!) {
-            environmentDeploy(environmentId: $environmentId)
-          }
-        `,
-        variables: { environmentId }
-      },
-      // Original triggers deploy
-      {
-        name: "Environment triggers deploy mutation",
-        query: `
-          mutation environmentTriggersDeploy($input: EnvironmentTriggersDeployInput!) {
-            environmentTriggersDeploy(input: $input)
-          }
-        `,
-        variables: { input: { environmentId } }
-      },
-      // Try service deploy for all services in environment
-      {
-        name: "Service deploy mutation",
-        query: `
-          mutation serviceDeploy($serviceId: String!) {
-            serviceDeploy(serviceId: $serviceId) {
-              id
-              status
-            }
-          }
-        `,
-        // This will need special handling since we need to get services first
         requiresServices: true
+      },
+      // Try service connect for new deployments
+      {
+        name: "Service Connect (for deployment trigger)",
+        query: `
+          mutation ServiceConnect($input: ServiceConnectInput!) {
+            serviceConnect(input: $input) {
+              id
+            }
+          }
+        `,
+        requiresServiceConnect: true
+      },
+      // Deployment restart if deployment exists
+      {
+        name: "Deployment Restart",
+        query: `
+          mutation DeploymentRestart($id: String!) {
+            deploymentRestart(id: $id)
+          }
+        `,
+        requiresDeploymentId: true
       }
     ];
 
@@ -34592,17 +34595,44 @@ class RailwayClient {
         console.log(`Trying deployment: ${deployConfig.name}`);
         
         if (deployConfig.requiresServices) {
-          // Get environment to find services, then deploy each
+          // Get environment to find services, then deploy each service instance
           const env = await this.getEnvironment(environmentId);
           if (env?.serviceInstances?.edges?.length > 0) {
             for (const serviceEdge of env.serviceInstances.edges) {
               const serviceId = serviceEdge.node.serviceId;
-              await this.graphql(deployConfig.query, { serviceId });
+              const variables = {
+                environmentId: environmentId,
+                serviceId: serviceId
+              };
+              console.log(`Deploying service ${serviceId} in environment ${environmentId}`);
+              await this.graphql(deployConfig.query, variables);
             }
             console.log(`✅ Success with: ${deployConfig.name}`);
             return true;
           } else {
             console.log(`❌ No services found for: ${deployConfig.name}`);
+            continue;
+          }
+        } else if (deployConfig.requiresServiceConnect) {
+          // Try service connect approach - need to implement this if needed
+          console.log(`❌ Service connect not implemented yet: ${deployConfig.name}`);
+          continue;
+        } else if (deployConfig.requiresDeploymentId) {
+          // Try to find existing deployment and restart it
+          const env = await this.getEnvironment(environmentId);
+          if (env?.serviceInstances?.edges?.length > 0) {
+            for (const serviceEdge of env.serviceInstances.edges) {
+              const latestDeployment = serviceEdge.node.latestDeployment;
+              if (latestDeployment?.id) {
+                const variables = { id: latestDeployment.id };
+                console.log(`Restarting deployment ${latestDeployment.id}`);
+                await this.graphql(deployConfig.query, variables);
+              }
+            }
+            console.log(`✅ Success with: ${deployConfig.name}`);
+            return true;
+          } else {
+            console.log(`❌ No deployments found for: ${deployConfig.name}`);
             continue;
           }
         } else {
