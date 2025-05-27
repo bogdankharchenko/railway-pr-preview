@@ -17,6 +17,7 @@ This GitHub Action integrates with Railway's API to:
 - ✅ Handles PR reopening and synchronization
 - ✅ Clean environment deletion on PR close
 - ✅ Configurable deployment triggering
+- ✅ **Ephemeral environment support** for cost-effective temporary previews
 
 ## Usage
 
@@ -65,8 +66,45 @@ jobs:
           environment_name_prefix: 'preview-'
           comment_on_pr: 'true'
           deploy_on_create: 'true'
+          is_ephemeral: 'true'  # Create as ephemeral environment for cost optimization
           github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+## Railway Ephemeral Environments
+
+Railway has built-in support for ephemeral PR environments. Here are the two approaches you can use:
+
+### Option 1: Railway's Built-in PR Environments (Recommended)
+
+Enable automatic PR environments in your Railway project:
+
+1. Go to **Project Settings → Environments tab** in Railway dashboard
+2. Enable **"Create PR environments automatically"**
+3. Railway will automatically create ephemeral environments for each PR
+4. These environments are automatically marked as ephemeral and deleted when PRs close
+
+**Workflow with built-in PR environments:**
+```yaml
+# No additional action needed - Railway handles this automatically
+# when PR environments are enabled in project settings
+```
+
+### Option 2: Manual PR Environments with this Action
+
+Use this action to manually create PR environments with the option to mark them as ephemeral:
+
+```yaml
+- name: Deploy Railway PR Preview  
+  uses: your-username/railway-pr-preview@v1
+  with:
+    railway_token: ${{ secrets.RAILWAY_TOKEN }}
+    source_environment_id: ${{ secrets.RAILWAY_SOURCE_ENV_ID }}
+    is_ephemeral: true  # Attempts to mark as ephemeral (may not be supported in all Railway API versions)
+    comment_on_pr: true
+    deploy_on_create: true
+```
+
+**Note**: The `is_ephemeral` parameter may not be supported in all Railway API versions. If it's not supported, the environment will still be created successfully but may not be marked as ephemeral internally. Railway's built-in PR environment feature (Option 1) is the recommended approach for true ephemeral environments.
 
 ## Inputs
 
@@ -80,6 +118,7 @@ jobs:
 | `deploy_on_create` | Whether to trigger deployment after creating environment | ❌ | `true` |
 | `wait_for_urls` | Whether to wait for deployment URLs before updating comment | ❌ | `true` |
 | `url_wait_timeout` | Max time to wait for URLs in seconds | ❌ | `120` |
+| `is_ephemeral` | Whether to create the environment as ephemeral (temporary preview) | ❌ | `false` |
 
 ## Outputs
 

@@ -21,6 +21,7 @@ async function run() {
     const deployOnCreate = core.getInput('deploy_on_create') === 'true';
     const waitForUrls = core.getInput('wait_for_urls') === 'true';
     const urlWaitTimeout = parseInt(core.getInput('url_wait_timeout') || '120', 10) * 1000;
+    const isEphemeral = core.getInput('is_ephemeral') === 'true';
 
     // Initialize clients
     const railway = new RailwayClient(railwayToken);
@@ -104,6 +105,7 @@ async function run() {
           deployOnCreate,
           waitForUrls,
           urlWaitTimeout,
+          isEphemeral,
           context
         });
       } else if (action === 'closed') {
@@ -128,6 +130,7 @@ async function run() {
         deployOnCreate,
         waitForUrls,
         urlWaitTimeout,
+        isEphemeral,
         context
       });
     }
@@ -151,6 +154,7 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
     deployOnCreate,
     waitForUrls,
     urlWaitTimeout,
+    isEphemeral,
     context
   } = options;
 
@@ -174,12 +178,34 @@ async function handlePROpenedOrUpdated(railway, octokit, options) {
       core.info(`Using source environment: ${sourceEnv.name}`);
       
       try {
-        environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
+        environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName, {
+          isEphemeral: isEphemeral
+        });
         core.info(`Environment created successfully: ${environment.name}`);
+        if (environment.isEphemeral) {
+          core.info('✨ Environment created as ephemeral (temporary preview)');
+        } else if (isEphemeral) {
+          core.info('ℹ️  Environment created (isEphemeral parameter may not be supported in this Railway API version)');
+        }
         isNewEnvironment = true;
       } catch (createError) {
-        core.error(`Failed to create environment: ${createError.message}`);
-        throw createError;
+        // If creation with isEphemeral fails, try without it
+        if (isEphemeral && createError.message.includes('Problem processing request')) {
+          core.info('ℹ️  Retrying environment creation without isEphemeral parameter...');
+          try {
+            environment = await railway.createEnvironment(projectId, sourceEnvironmentId, environmentName);
+            core.info(`Environment created successfully: ${environment.name}`);
+            core.info('ℹ️  Note: isEphemeral parameter not supported in this Railway API version');
+            core.info('💡 Consider using Railway\'s built-in PR environments for true ephemeral status');
+            isNewEnvironment = true;
+          } catch (fallbackError) {
+            core.error(`Failed to create environment (fallback): ${fallbackError.message}`);
+            throw fallbackError;
+          }
+        } else {
+          core.error(`Failed to create environment: ${createError.message}`);
+          throw createError;
+        }
       }
     }
 

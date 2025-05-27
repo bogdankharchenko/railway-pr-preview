@@ -47,7 +47,7 @@ class RailwayClient {
     return result.data;
   }
 
-  async createEnvironment(projectId, sourceEnvironmentId, name) {
+  async createEnvironment(projectId, sourceEnvironmentId, name, options = {}) {
     // Validate inputs
     if (!projectId || !sourceEnvironmentId || !name) {
       throw new Error(`Missing required parameters: projectId=${projectId}, sourceEnvironmentId=${sourceEnvironmentId}, name=${name}`);
@@ -69,6 +69,7 @@ class RailwayClient {
           name
           createdAt
           projectId
+          isEphemeral
           deploymentTriggers {
             edges {
               node {
@@ -102,6 +103,7 @@ class RailwayClient {
         name,
         projectId,
         sourceEnvironmentId,
+        ...(options.isEphemeral !== undefined && { isEphemeral: options.isEphemeral }),
       },
     };
 
@@ -134,6 +136,7 @@ class RailwayClient {
           name
           createdAt
           projectId
+          isEphemeral
           serviceInstances {
             edges {
               node {

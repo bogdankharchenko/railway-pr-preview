@@ -37,6 +37,10 @@ inputs:
     description: 'Max time to wait for URLs in seconds'
     required: false
     default: '120'
+  is_ephemeral:
+    description: 'Whether to create the environment as ephemeral (temporary preview). Note: Railway has built-in PR environment support which is recommended for true ephemeral environments.'
+    required: false
+    default: 'false'
 
 outputs:
   environment_id:
